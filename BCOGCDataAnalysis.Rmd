@@ -1,0 +1,568 @@
+---
+title: "R_Ladies_BCOGCDataAnalysis"
+author: "Paulina Wozniakowska"
+date: "19/04/2021"
+output:
+  html_document: default
+  pdf_document: default
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, echo=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = 'C:/Users/Paulina-laptop/Desktop/RRR/')
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cleaning, message=FALSE}
+rm(list = ls(all=TRUE)) # clear global environment
+```
+
+
+```{r libLoading, message=FALSE, warning=FALSE}
+
+library(tidyr) # data loading
+library(dplyr) #dataframe manipulation
+library(stringr) # string manipulation
+# library(lubridate, warn.conflicts = FALSE) # work with date formats
+library(ggplot2) # plotting
+
+options(scipen = 999) # number formatting
+
+path <- file.path("C:","Users","Paulina-laptop","Desktop","RRR")
+
+setwd(path)
+sprintf("Current directory: %s", getwd())
+
+```
+
+## Data loading & preparation
+
+Let's load some data first
+
+```{r load data}
+wells <- read.csv(unzip("BCOGC_data/prod_csv.zip", "zone_prd_2016_to_present.csv"), skip = 1)
+
+head(wells)
+```
+
+Column names in the original file have many strange interpunction, which could be easily fixed:
+```{r, rename columns}
+names(wells) <- str_replace_all(names(wells), c(" " = "" , 
+                                                "," = "",
+                                                "\\("="_",
+                                                "\\)"="",
+                                                "\\.."="_",
+                                                "\\."=""
+                                                ))
+names(wells)
+```
+
+```{r, read addtional files}
+wells <- subset(wells, select=c(Wa_num, Prod_period, Prod_days, Area_code, Formtn_code, Gas_prod_vol_e3m3, Oil_prod_vol_m3, Water_prod_vol_m3, Cond_prod_vol_m3)) # select only useful columns
+
+area_codes <- read.table("BCOGC_data/ogc_area_codes.csv", 
+                         sep = ",", skip = 1, header = TRUE, stringsAsFactors = FALSE)
+head(area_codes,3)
+area_codes <- rename(area_codes, Area_code = Area.Code, Area_name = Area.Name)
+
+formation_codes <- read.table("BCOGC_data/ogc_formation_codes.csv", 
+                              sep = ",", skip = 1, header = TRUE, stringsAsFactors = FALSE)
+head(formation_codes,3)
+formation_codes <- rename(formation_codes, Formtn_code = Formation.Code, Formtn_name = Formation.Name)
+```
+
+Merge dataframes to create 2 additional columns with area 
+and name as the wells file contains only its numerical codes.
+```{r, merge area and formation codes}
+wells <- merge(wells, area_codes, by = 'Area_code')
+wells <- merge(wells, formation_codes, by = 'Formtn_code')
+
+# we don't need them anymore in memory and dataframe
+rm(area_codes, formation_codes) # remove form memory
+wells <- subset(wells, select = -c(Area_code, Formtn_code)) # remove from dataframe
+```
+
+First glimpse on the data. Notice newly created columns, Area_name and Formtn_name at the end.
+```{r, data info}
+names(wells)
+str(wells)
+summary(wells)
+
+length(unique(wells$Formtn_name)) # number of formations
+unique(wells$Formtn_name)
+```
+
+## Key dplyr functions:
+- filter() - pick observations by their values
+- arrange() - reorder the rows
+- select() - pick variables by names
+- mutate() - create new variables using functions of existing ones
+- summarize() - collapse many values down to a single summary
+
+### filter
+
+```{r, dplyr filter}
+
+slave_pnt <- filter(wells, Formtn_name == "SLAVE POINT" )
+unique(slave_pnt$Formtn_name)
+
+muskwa <- filter(wells, Formtn_name %in% c("MUSKWA", "MUSKWA-OTTER PARK"))
+unique(muskwa$Formtn_name)
+# same as
+muskwa <- filter(wells, Formtn_name == "MUSKWA" | Formtn_name == "MUSKWA-OTTER PARK")
+unique(muskwa$Formtn_name)
+```
+### arrange - sort dataframe
+
+```{r, dplyr arrange}
+
+Wa_num_sorted <- arrange(wells, Prod_period) # ascending
+head(Wa_num_sorted)
+
+Wa_num_sorted <- arrange(wells, desc(Prod_period)) # descending
+head(Wa_num_sorted)
+
+Wa_num_sorted <- arrange(wells, desc(Prod_period), Wa_num) # by multiple conditions
+head(Wa_num_sorted)
+
+rm(Wa_num_sorted)
+
+```
+### select - select by columns
+
+```{r, dyplr select}
+names(wells)
+
+head(select(wells, Area_name, Formtn_name))
+
+head(select(wells, Gas_prod_vol_e3m3:Cond_prod_vol_m3, Area_name, Formtn_name))
+```
+
+The same wells have been listed multiple times as there are various production periods each year. Let's create new column Prod_year to make more general summary.
+
+### mutate - create new columns
+```{r, dplyr mutate}
+head(wells$Prod_period)
+
+library(stringr)
+
+wells <- wells %>%
+  mutate(Prod_year = substr(Prod_period, 1, 4),
+         Prod_month = substr(Prod_period, 5, 6),
+         # Prod_ym = as.factor(paste(Prod_year, Prod_month))) #to create time "points" only from available dates
+         Prod_ym = paste(Prod_year, Prod_month, sep="-")) #to create time "points" only from available dates
+
+head(wells)
+class(wells$Prod_ym)
+
+```
+### summarize
+
+```{r, dplyr summarize, warning=FALSE}
+head(wells$Prod_period)
+
+prod_days_by_area <- wells %>%
+  group_by(Area_name) %>%
+  summarize(
+    total_prod_days = sum(Prod_days)
+    )
+
+head(prod_days_by_area)
+
+prod_days_by_area %>% filter(total_prod_days > 500000) %>% 
+  ggplot(aes(x = Area_name, y = total_prod_days)) + 
+  geom_col() + 
+  ggtitle("Total Production Days for most productive areas", ) +
+  ylab("Production days") + 
+  xlab("Area")
+```
+## histograms
+```{r, histogram}
+
+wells %>% filter(Cond_prod_vol_m3 > 0) %>% 
+  ggplot() + 
+  geom_histogram(mapping = aes(Cond_prod_vol_m3))
+
+wells %>% filter(Cond_prod_vol_m3 > 100, Cond_prod_vol_m3 < 1000) %>% 
+  ggplot() + 
+  geom_histogram(mapping = aes(Cond_prod_vol_m3))
+
+wells %>% filter(Cond_prod_vol_m3 > 100, Cond_prod_vol_m3 < 1000) %>% 
+  ggplot() + 
+  geom_histogram(mapping = aes(Cond_prod_vol_m3), bins=200) + 
+  ggtitle("Distribution of condensate production per production period") + 
+  xlab(expression("Condensate production per production period m"^3))
+```
+
+Data analysis
+We can check general trends in production by formation and area. Lets start analyzing by formation
+## tables
+
+```{r, tables}
+# Using tables we can see how many wells we have for each formation
+wells %>% group_by(Formtn_name) %>%
+  summarize(
+    count_wells = n_distinct(Wa_num),#count unique well numbers (multiple prod. periods)
+    mean_wtr_prod = mean(Water_prod_vol_m3)
+  ) %>% arrange(desc(count_wells))
+
+# we can find which areas / formations suspected to have more water disposal wells?
+wells %>% group_by(Area_name) %>%
+  summarize(
+    count_wells = n_distinct(Wa_num), 
+    mean_wtr_prod = mean(Water_prod_vol_m3) 
+  ) %>% arrange(desc(count_wells))
+
+```
+
+## scatterplots
+We can make our data in the long format and have all types of hydrocarbon production in one column using gather function.
+
+![alt text here](https://www.joyofdata.de/blog/wp-content/uploads/2012/11/Clipboard16.png)
+
+```{r, water production charts, fig.height=5, fig.width=15}
+wells %>% select(Water_prod_vol_m3, Gas_prod_vol_e3m3, Oil_prod_vol_m3, Cond_prod_vol_m3) %>% 
+  head(3)
+
+prod_df <- wells %>% 
+  gather(key = "Prod_type",
+         value = "Prod_volume",
+         c(Gas_prod_vol_e3m3, Oil_prod_vol_m3, Cond_prod_vol_m3)) %>% 
+  select(Water_prod_vol_m3, Prod_volume, Prod_year, Prod_ym, Prod_type, Prod_days, Formtn_name)
+
+prod_df %>% select(Water_prod_vol_m3, Prod_type) %>% head(3)
+
+unique(prod_df$Prod_type)
+
+prod_df %>% 
+  filter(Prod_year == 2021) %>% 
+  ggplot(aes(x = Water_prod_vol_m3, y = Prod_volume, colour = Prod_type)) +
+  geom_point()
+  
+# limit axis
+prod_df %>% 
+  filter(Prod_year == 2021) %>% 
+  ggplot(aes(x = Water_prod_vol_m3, y = Prod_volume, colour = Prod_type)) +
+  geom_point() + 
+  xlim(0,10000) + 
+  ylim(0,25000)
+
+prod_df %>% 
+  filter(Prod_year == 2021) %>% 
+  ggplot(aes(x = Water_prod_vol_m3, y = Prod_volume, colour = Prod_type)) +
+  geom_point() + 
+  facet_wrap(~Prod_type)
+
+prod_df %>% 
+  filter(Prod_year == 2021) %>% 
+  ggplot(aes(x = Water_prod_vol_m3, y = Prod_volume, colour = Prod_type, alpha = 0.3)) +
+  geom_point() + 
+  facet_wrap(~Prod_type, scales = "free") # scales free => not fixed limits of yaxis
+
+# I expect that Prod_volume > 0 will indicate the SWD disposal wells, let's remove those from the plot
+
+prod_df %>% 
+  filter(Prod_year == 2021, Prod_volume > 0) %>% # Prod_colume > 0 to remove disposal wells 
+  ggplot(aes(x = Water_prod_vol_m3, y = Prod_volume, colour = Prod_type, alpha = 0.3)) +
+  geom_point() + 
+  ggtitle("Water production per HC type") +
+  facet_wrap(~Prod_type, scales = "free") +
+  xlim(0,5000) 
+
+```
+
+## bar charts
+```{r, bar charts, fig.height=5, fig.width=15}
+wells %>% subset(Prod_year > 2000) %>% 
+  group_by(Prod_ym) %>% 
+  summarise(
+    prod_per_period = sum(Cond_prod_vol_m3)
+  ) %>% 
+  ggplot(aes(x = Prod_ym, y = prod_per_period)) + 
+  theme(axis.text.x = element_text(angle = 90)) + 
+  geom_col()
+
+wells %>% 
+  subset(Prod_year > 2000) %>%
+  group_by(Prod_year) %>% 
+  summarise(
+    prod_per_year = sum(Cond_prod_vol_m3)
+  ) %>% 
+  ggplot(aes(x = Prod_year, y = prod_per_year)) + 
+  geom_col()
+class(wells$Prod_period)
+
+```
+## line graphs
+```{r}
+unique(wells$Formtn_name)[1:20]
+
+prod_df %>%
+  filter(Formtn_name == "BOUNDARY LAKE") %>% 
+  group_by(Prod_ym, Formtn_name, Prod_type) %>% 
+  summarise(
+    total_prod = sum(Prod_volume)
+    ) %>% 
+  ungroup() %>% 
+  ggplot(aes(x = Prod_ym, y = total_prod, group=Formtn_name, col=Prod_type)) +
+  geom_line() + 
+  scale_x_discrete(breaks = c("2016-01", "2017-01","2018-01",
+                              "2019-01","2020-01", "2021-01")) +
+  facet_grid(Prod_type ~ ., scales = "free")
+
+# all formations on one chart
+prod_df %>%
+  group_by(Prod_ym, Prod_type) %>% 
+  summarise(
+    total_prod = sum(Prod_volume)
+    ) %>% 
+  ungroup() %>% 
+  ggplot(aes(x = Prod_ym, y = total_prod, group=1, col=Prod_type)) +
+  geom_line() + 
+  scale_x_discrete(breaks = c("2016-01", "2017-01","2018-01", 
+                              "2019-01","2020-01", "2021-01")) +
+  facet_grid(Prod_type ~ ., scales = "free")
+
+```
+
+We can apply simple trick to order the formations from the highest production to the lowest (using mutate function).
+
+We save most productive formations separately, they will be useful later to plot production in time.
+
+```{r, more bar charts, fig.height=5, fig.width=15}
+
+prod_by_formation <- wells %>% 
+  group_by(Formtn_name) %>%
+  summarise(
+    oil_prod_total = sum(Oil_prod_vol_m3),
+    gas_prod_total = sum(Gas_prod_vol_e3m3),
+    cond_prod_total = sum(Cond_prod_vol_m3), 
+    water_prod_total = sum(Water_prod_vol_m3)
+    ) %>%
+  ungroup()
+
+most_gas <- prod_by_formation %>% 
+  arrange(desc(gas_prod_total)) %>% 
+  head(5) 
+
+ggplot(most_gas, aes(x = Formtn_name, y = gas_prod_total)) +
+  geom_col(fill='#ff6347') # change color to red
+
+# trick using mutate to order the bars according to production value 
+most_gas <- most_gas %>%  
+  mutate(Formtn_name=factor(Formtn_name, levels=Formtn_name))
+
+ggplot(most_gas, aes(x = Formtn_name, y = gas_prod_total)) +
+  geom_col(fill='#ff6347') # change color to red
+
+# same for oil production
+most_oil <- prod_by_formation %>% 
+  arrange(desc(oil_prod_total)) %>% 
+  head(5) %>% 
+  mutate(Formtn_name=factor(Formtn_name, levels=Formtn_name))
+
+ggplot(most_oil, aes(x = Formtn_name, y = oil_prod_total)) +
+  geom_col()
+
+# and for condensate production
+most_cond <- prod_by_formation %>% 
+  arrange(desc(cond_prod_total)) %>% 
+  head(5) %>% 
+  mutate(Formtn_name=factor(Formtn_name, levels=Formtn_name))
+
+ggplot(most_gas, aes(x = Formtn_name, y = gas_prod_total)) +
+  geom_col(fill="#6495ed")
+```
+
+We can also visualize the same set of formations. 
+To define the set, we will take 5 most productive gas, oil and condensate formations.
+
+```{r, even more bar charts, fig.height=5, fig.width=15}
+# define 5 most productive formations
+best_formations <- unique(most_oil$Formtn_name,
+                            most_gas$Formtn_name,
+                            most_cond$Formtn_name)
+
+wells %>% 
+  subset(Formtn_name %in% best_formations) %>%
+  ggplot(aes(x = Formtn_name, y = Oil_prod_vol_m3, fill=Formtn_name)) +
+    geom_bar(stat = "summary", fun = "sum") +
+  ggtitle("Total oil production by formation") +
+  xlab("Formation") +
+  ylab("Oil production [m3]")
+
+prod_by_formation %>% 
+  subset(Formtn_name %in% best_formations) %>%
+  ggplot(aes(x = Formtn_name, y = gas_prod_total, fill=Formtn_name)) +
+    geom_bar(stat = "summary", fun = "sum") + 
+  ggtitle("Total gas production by formation") + 
+  xlab("Formation") + 
+  ylab("Gas production [e3m3]")
+
+prod_by_formation %>% 
+  subset(Formtn_name %in% best_formations) %>%
+  ggplot(aes(x = Formtn_name, y = cond_prod_total, fill=Formtn_name)) +
+    geom_bar(stat = "summary", fun = "sum") + 
+  ggtitle("Total condensate production by formation") + 
+  xlab("Formation") + 
+  ylab("Condensate production [m3]")
+
+prod_by_formation %>% 
+  subset(Formtn_name %in% best_formations) %>%
+  ggplot(aes(x = Formtn_name, y = water_prod_total, fill=Formtn_name)) +
+    geom_bar(stat = "summary", fun = "sum") + 
+  ggtitle("Total water production by formation") + 
+  xlab("Formation") + 
+  ylab("Water production [m3]")
+```
+
+
+```{r, eval=TRUE, echo=FALSE}
+gas_prod <- prod_by_formation[prod_by_formation$gas_prod_total > 0,]
+oil_prod <- prod_by_formation[prod_by_formation$oil_prod_total > 0,]
+cond_prod <- prod_by_formation[prod_by_formation$cond_prod_total > 0,]
+```
+
+## FACETS - subplots according to some variable
+
+```{r, fig.height=5, fig.width=15}
+#library(tidyverse)
+
+ggplot(data = wells, aes(x = Prod_year)) + geom_bar()
+
+# FILTER FROMATIONS WITH MOST WELLS
+ggplot(filter(wells, Formtn_name %in% best_formations & Prod_year < 2021)) +
+  geom_bar(aes(x = Formtn_name, fill=Formtn_name)) + 
+  scale_fill_manual(values = c('#d0d1e6','#a6bddb','#67a9cf','#1c9099','#016c59')) + # taken e.g. from colorbrewer!
+  facet_wrap(~ Prod_year) + 
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.title.x = element_blank())
+```
+
+## Bonus: Interactive area charts!
+
+If we want to compare oil and gas production in one plot its useful to produce the formation of the dataset (https://www.joyofdata.de/blog/wp-content/uploads/2012/11/Clipboard16.png)
+```{r}
+library(plotly)
+head(prod_df)
+prod_per_period <- prod_df %>% 
+  filter(Formtn_name %in% best_formations) %>% 
+  group_by(Prod_ym, Prod_type, Formtn_name) %>% 
+  summarise(
+    prod_per_period = sum(Prod_volume)
+  )
+
+p <- ggplot(prod_per_period, aes(x=Prod_ym, y=prod_per_period, group=Formtn_name, fill=Formtn_name)) + 
+  geom_area(alpha=0.3) + 
+  scale_x_discrete(breaks = c("2016-01", "2017-01","2018-01", 
+                              "2019-01","2020-01", "2021-01")) +
+  facet_grid(Prod_type ~ ., scales = "free")
+
+p <- ggplotly(p, tooltip = "text")
+p
+
+p <- ggplot(prod_per_period, aes(x=Prod_ym, y=prod_per_period, group=Prod_type, 
+                                 text = paste("Formation:", Formtn_name, 
+                                              "<br>Prod. type:", Prod_type), fill=Prod_type)) +
+  geom_area(colour="#636363", alpha=0.3) + 
+  scale_x_discrete(breaks = c("2016-01", "2017-01","2018-01", 
+                              "2019-01","2020-01", "2021-01")) + 
+  facet_wrap(Formtn_name ~ ., scales = "free") + 
+  ylab("") + 
+  xlab("")
+
+p <- ggplotly(p, tooltip = "text")
+p
+
+```
+
+```{r, shapefiles}
+# load well information (coordinates)
+# load shapefiles with areas
+
+library(sf)
+# load dplyr and ggplot2 in case this is the only chunk you want to run
+library(dplyr) 
+library(ggplot2) 
+
+wells_coords <- read.csv(unzip("BCOGC_data/drill_csv.zip", "wells.csv"), skip = 1)  
+
+head(wells_coords)#bigger file
+names(wells_coords)
+
+wells_coords <- wells_coords %>% select(Surf.UTM83.Northng, Surf.UTM83.Eastng, Surf.UTM.Zone.Num, Well.Area.Name, Oper.Abbrev, Surf.Owner)
+
+wells_coords <- wells_coords %>% filter(complete.cases(.), Surf.UTM.Zone.Num %in% c(10,11))
+unique(wells_coords$Surf.UTM.Zone.Num)
+
+# create 2 geodataframes with crs values according to UTM zone
+
+wells_pts_1 <- wells_coords %>% 
+  filter(Surf.UTM.Zone.Num == 10) %>% 
+  st_as_sf(coords = c("Surf.UTM83.Eastng", "Surf.UTM83.Northng"), crs = 26910) %>% 
+  st_transform(4326) # want to use latlon coords
+
+wells_pts_2 <- wells_coords %>% 
+  filter(Surf.UTM.Zone.Num == 11) %>%  
+  st_as_sf(coords = c("Surf.UTM83.Eastng", "Surf.UTM83.Northng"), crs = 4326)
+
+wells_pts <- rbind(wells_pts_1, wells_pts_2)
+st_crs(wells_pts)
+
+geoph_lines <- st_read("BCOGC_data/shapefiles/PASR_GEOPHYSICAL_LN.shp")
+geoph_lines_dawson <- filter(geoph_lines, PROG_NAME %in% c("DAWSON 3D","DAWSON 3D EXTENSION"))
+geoph_lines_dawson <- st_transform(geoph_lines_dawson, st_crs(wells_pts))
+
+dawson_area <- st_union(geoph_lines_dawson) %>% 
+  st_convex_hull()
+
+wells_dawson <- wells_pts %>%
+  filter(st_intersects(x = ., y = dawson_area, sparse = FALSE))
+
+ggplot() + 
+  geom_sf(data = wells_dawson, size=1, alpha=0.2, aes(colour=Surf.Owner)) + 
+  geom_sf(data = geoph_lines_dawson, size=0.1)
+
+names(wells_dawson)
+
+pools <- st_read("BCOGC_data/shapefiles/POOL_CONTOURS_LN.shp")
+pools <- st_transform(pools, st_crs(wells_dawson))
+pools_dawson <- pools %>%
+  filter(st_within(x = ., y = dawson_area, sparse = FALSE))
+
+ggplot() + 
+  geom_sf(data = wells_dawson, alpha=0.2) + 
+  geom_sf(data = geoph_lines_dawson, alpha=0.2) + 
+  geom_sf(data = pools_dawson, aes(colour=FLUID_TYPE)) +
+  scale_color_discrete(name = "Producing pools") +
+  xlab("Longitude") + 
+  ylab("Latitude")
+
+fields <- st_read("BCOGC_data/shapefiles/FIELDS_PY.shp")
+ggplot() + 
+  geom_sf(data = fields)
+fields <- st_transform(fields, st_crs(wells_dawson))
+
+# let's focus on the fields in the smaller area (crop the layer)
+fields <- st_crop(fields, xmin = -121, xmax = -120, ymin = 55.7, ymax = 56)
+unique(fields$FLDRNM)
+
+ggplot() + 
+  geom_sf(data = wells_dawson, alpha=0.2) +
+  geom_sf(data = geoph_lines_dawson, alpha=0.2) +
+  geom_sf(data = pools, aes(colour=FLUID_TYPE)) +
+  geom_sf(data = fields, alpha=0.1, linetype="dashed") +
+  scale_color_discrete(name = "Producing pools") +
+  coord_sf(crs = 4326, xlim = c(-121,-120), ylim = c(55.7, 56)) + 
+  xlab("Longitude") + 
+  ylab("Latitude")
+
+```
