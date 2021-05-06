@@ -1,7 +1,7 @@
 ---
 title: "R_Ladies_BCOGCDataAnalysis"
 author: "Paulina Wozniakowska"
-date: "05/05/2021"
+date: "05/08/2021"
 output:
   html_document: default
   pdf_document: default
@@ -11,7 +11,7 @@ editor_options:
 
 ```{r setup, echo=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-knitr::opts_knit$set(root.dir = 'C:/Users/Paulina-laptop/Desktop/R_Programming/')
+knitr::opts_knit$set(root.dir = 'C:/Users/Paulina-laptop/Desktop')
 ```
 
 ## R Markdown
@@ -50,7 +50,7 @@ head(wells)
 ```
 
 Column names in the original file have inconvenient interpunction, which can be easily fixed:
-```{r, rename-columns}
+```{r rename-columns}
 names(wells) <- str_replace_all(names(wells), c(" " = "" , 
                                                 "," = "",
                                                 "\\("="_",
@@ -61,7 +61,7 @@ names(wells) <- str_replace_all(names(wells), c(" " = "" ,
 names(wells)
 ```
 
-```{r, read-addtional-files}
+```{r read-addtional-files}
 wells <- subset(wells, select=c(Wa_num, Prod_period, Prod_days, Area_code, Formtn_code, Gas_prod_vol_e3m3, Oil_prod_vol_m3, Water_prod_vol_m3, Cond_prod_vol_m3)) # select only useful columns
 
 area_codes <- read.table("BCOGC_data/ogc_area_codes.csv", 
@@ -74,6 +74,10 @@ formation_codes <- read.table("BCOGC_data/ogc_formation_codes.csv",
                               sep = ",", skip = 1, header = TRUE, stringsAsFactors = FALSE)
 head(formation_codes, 3)
 formation_codes <- rename(formation_codes, Formtn_code = Formation.Code, Formtn_name = Formation.Name)
+
+head(area_codes,3)
+head(formation_codes,3)
+
 ```
 
 Merge dataframes to create 2 additional columns with area 
@@ -138,7 +142,7 @@ rm(Wa_num_sorted)
 ```
 ### select - select dataframe by columns
 
-```{r, dyplr-select}
+```{r dyplr-select}
 names(wells)
 
 head(select(wells, Area_name, Formtn_name))
@@ -233,7 +237,7 @@ We can convert our dataframe to the long format to have all types of hydrocarbon
 
 ![](https://www.joyofdata.de/blog/wp-content/uploads/2012/11/Clipboard16.png)
 
-```{r, water production charts, fig.height=5, fig.width=15}
+```{r water-production-scatterplots, fig.height=5, fig.width=15}
 
 # let's look again on the selected columns of original dataframe
 wells %>% select(Water_prod_vol_m3, Gas_prod_vol_e3m3, Oil_prod_vol_m3, Cond_prod_vol_m3) %>% 
@@ -317,7 +321,6 @@ wells %>%
   ) %>% 
   ggplot(aes(x = Prod_year, y = prod_per_year)) + 
   geom_col()
-class(wells$Prod_period)
 
 ```
 
@@ -365,7 +368,7 @@ We can apply simple trick to order the formations from the highest production to
 
 We save most productive formations separately, they will be useful later to plot production in time.
 
-```{r, more-bar-charts, fig.height=5, fig.width=15}
+```{r more-bar-charts, fig.height=5, fig.width=15}
 
 # first let's create dataframe with summed produced values by formation
 prod_by_formation <- wells %>% 
@@ -415,7 +418,7 @@ ggplot(most_gas, aes(x = Formtn_name, y = gas_prod_total)) +
 We can also visualize the same set of formations. 
 To define the set, we will take 5 most productive gas, oil and condensate formations.
 
-```{r, even-more-bar-charts, fig.height=5, fig.width=15}
+```{r even-more-bar-charts, fig.height=5, fig.width=15}
 # define 5 most productive formations
 best_formations <- unique(most_oil$Formtn_name,
                             most_gas$Formtn_name,
@@ -458,17 +461,10 @@ prod_by_formation %>%
   ylab("Water production [m3]")
 ```
 
-
-# ```{r eval=TRUE, echo=FALSE}
-# gas_prod <- prod_by_formation[prod_by_formation$gas_prod_total > 0,]
-# oil_prod <- prod_by_formation[prod_by_formation$oil_prod_total > 0,]
-# cond_prod <- prod_by_formation[prod_by_formation$cond_prod_total > 0,]
-# ```
-
 ## FACETS - subplots according to some variable
-let's see how facets can increase the visibility of our charts ()
+let's see how facets can increase the visibility of our charts (and see the example of geom_bar as well)
 
-```{r, fig.height=5, fig.width=15}
+```{r facets, fig.height=5, fig.width=15}
 #library(tidyverse)
 
 # here we plot the count of wells per year for all formations
@@ -537,8 +533,7 @@ st_as_sf() - convert foreign object to the sf object
 st_crs() - get coordinate system of the feature
 st_transform() - transform features (for example change coordinate system)
 st_union() - merge multiple features into one
-st_intersects() - 
-
+st_intersects() - select intersecting features
 st_convex_hull() - create polygon around the points (minimum bounding area)
 st_within() - get features within other feature
 st_crop() - crop the feature 
