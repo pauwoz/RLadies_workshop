@@ -32,6 +32,8 @@ library(dplyr) # dataframe manipulation
 library(stringr) # string manipulation
 library(ggplot2) # plotting
 
+options(scipen = 999) # turn off scientific notation
+
 path <- file.path("C:","Users","Paulina-laptop","Desktop","R_Programming","RLadies_workshop")
 
 setwd(path)
@@ -107,12 +109,12 @@ unique(wells$Formtn_name)
 ```
 
 ## Key dplyr functions:
-- filter() - filter specific rows by values
-- arrange() - sort dataframe by column(s)
-- select() - pick specific columns of dataframe
-- mutate() - create new variables using functions of existing ones
-- summarize() - collapse many values down to a single summary
-- pipelines (%>%) - allows to perform multiple operations at once
+* filter() - filter specific rows by values
+* arrange() - sort dataframe by column(s)
+* select() - pick specific columns of dataframe
+* mutate() - create new variables using functions of existing ones
+* summarize() - collapse many values down to a single summary
+* pipelines (%>%) - allow to perform multiple operations at once
 
 ### filter - filter rows by values
 
@@ -160,7 +162,6 @@ The same wells have been listed multiple times as there are various production p
 
 ```{r dplyr-mutate}
 head(wells$Prod_period)
-
 wells <- wells %>%
   mutate(Prod_year = substr(Prod_period, 1, 4), # first 4 characters
          Prod_month = substr(Prod_period, 5, 6), # 5th and 6th character
@@ -301,13 +302,13 @@ prod_df %>%
 ## bar charts
 
 Bar charts can be created in using two geometries:
-geom_col - by default height of the bars represent value in the data
-geom_bar - by default counts number of cases in each group
+* geom_col - by default height of the bars represent value in the data
+* geom_bar - by default counts number of cases in each group
 
 ```{r bar-charts, fig.height=5, fig.width=15}
 
 ### Let's start with geom_col to visualize the production per period...
-wells %>% subset(Prod_year > 2000) %>% 
+wells %>% subset(Prod_year > 2018) %>% 
   group_by(Prod_ym) %>% 
   summarise(
     prod_per_period = sum(Cond_prod_vol_m3)
@@ -318,7 +319,7 @@ wells %>% subset(Prod_year > 2000) %>%
 
 ### ...and per year. Which one is more useful / interesting?
 wells %>% 
-  subset(Prod_year > 2000) %>%
+  subset(Prod_year > 2018) %>%
   group_by(Prod_year) %>% 
   summarise(
     prod_per_year = sum(Cond_prod_vol_m3)
@@ -467,7 +468,6 @@ prod_df %>%
 let's see how facets can increase the visibility of our charts (and see the example of geom_bar as well)
 
 ```{r facets, fig.height=5, fig.width=15}
-#library(tidyverse)
 
 # here we plot the count of wells per year for all formations
 ggplot(data = wells, aes(x = Prod_year)) +
@@ -493,15 +493,13 @@ library(plotly)
 
 head(prod_df)
 
-# let's filter the data first and summarize the production
+# let's filter the data first and summarize the production per period
 prod_per_period <- prod_df %>% 
   filter(Formtn_name %in% best_formations) %>% 
   group_by(Prod_ym, Prod_type, Formtn_name) %>% 
   summarise(
     prod_per_period = sum(Prod_volume)
   )
-
-prod_per_period %>% arrange(Prod_type, Formtn_name)
 
 # let's plot it according to the production type
 p <- ggplot(prod_per_period, aes(x=Prod_ym, y=prod_per_period, group=Formtn_name, fill=Formtn_name, text = paste("Formation:", Formtn_name, "<br>Production vol:", prod_per_period))) + 
@@ -512,14 +510,14 @@ p <- ggplot(prod_per_period, aes(x=Prod_ym, y=prod_per_period, group=Formtn_name
 p <- ggplotly(p, tooltip = "text")
 p
 
-# That's nice but let's add some details, like text when we hover over charts. 
+# let's plot it according to the formation 
 p <- ggplot(prod_per_period, aes(x=Prod_ym, y=prod_per_period, group=Prod_type, 
                                  text = paste("Formation:", Formtn_name, 
                                               "<br>Prod. type:", Prod_type), fill=Prod_type)) +
   geom_area(colour="#636363", alpha=0.3) + 
   scale_x_discrete(breaks = c("2016-01", "2017-01","2018-01", 
                               "2019-01","2020-01", "2021-01")) + 
-  facet_wrap(Formtn_name ~ ., scales = "free") + 
+  facet_grid(Formtn_name ~ ., scales = "free") + 
   ylab("") + 
   xlab("")
 
@@ -533,14 +531,15 @@ Let's move to another dataset provided by BCOGC to access the location of the we
 O&G field => group of O&G pools
 
 Here we will use geom_sf geometry and sf package, commonly used for geospatial data manipulation. We fill use following sf functions:
-st_as_sf() - convert foreign object to the sf object
-st_crs() - get coordinate system of the feature
-st_transform() - transform features (for example change coordinate system)
-st_union() - merge multiple features into one
-st_intersects() - select intersecting features
-st_convex_hull() - create polygon around the points (minimum bounding area)
-st_within() - get features within other feature
-st_crop() - crop the feature 
+
+* st_as_sf() - convert foreign object to the sf object
+* st_crs() - get coordinate system of the feature
+* st_transform() - transform features (for example change coordinate system)
+* st_union() - merge multiple features into one
+* st_intersects() - select intersecting features
+* st_convex_hull() - create polygon around the points (minimum bounding area)
+* st_within() - get features within other feature
+* st_crop() - crop the feature 
 
 ```{r shapefiles, warning=FALSE, message=FALSE}
 
@@ -564,7 +563,7 @@ names(wells_coords)
 # subset dataframe
 wells_coords <- wells_coords %>% select(Surf.UTM83.Northng, Surf.UTM83.Eastng, Surf.UTM.Zone.Num, Well.Area.Name, Oper.Abbrev, Surf.Owner)
 
-# select only wells from the UNT10 and UTM11 zones
+# select only wells from the UNT10 and UTM11 zones with not-missing coordinates (complete.cases(.))
 wells_coords <- wells_coords %>% filter(complete.cases(.), Surf.UTM.Zone.Num %in% c(10,11))
 unique(wells_coords$Surf.UTM.Zone.Num)
 
@@ -657,7 +656,7 @@ ggplot() +
   geom_sf(data = wells_dawson, alpha=0.2) +
   geom_sf(data = geoph_lines_dawson, alpha=0.2) +
   geom_sf(data = pools, aes(colour=FLUID_TYPE)) +
-  geom_sf(data = field_dawson, fill=NA, linetype="dashed", colour="blue", size=0.2) +
+  geom_sf(data = field_dawson, fill=NA, linetype="dashed", colour="blue", size=0.5) +
   scale_color_discrete(name = "Producing pools") +
   coord_sf(crs = 4326, xlim = c(-120.5,-120), ylim = c(55.7, 56)) + 
   xlab("Longitude") + 
