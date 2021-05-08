@@ -32,6 +32,8 @@ library(dplyr) # dataframe manipulation
 library(stringr) # string manipulation
 library(ggplot2) # plotting
 
+# or simply library(tidyverse)
+
 options(scipen = 999) # turn off scientific notation
 
 path <- file.path("C:","Users","Paulina-laptop","Desktop","R_Programming","RLadies_workshop")
@@ -288,9 +290,23 @@ prod_df %>%
   geom_point() + 
   facet_wrap(~Prod_type, scales = "free") # scales free => not fixed limits of yaxis
 
+# make grid using 2 columns
+prod_df %>% 
+  filter(Prod_year == 2021, Formtn_name %in% c("MONTNEY","BLUESKY")) %>% 
+  ggplot(aes(x = Water_prod_vol_m3, y = Prod_volume, colour = Prod_type, alpha = 0.3)) +
+  geom_point() + 
+  facet_wrap(Formtn_name~Prod_type, scales = "free") # scales free => not fixed limits of yaxis
+
+# same but with facet_grid (notice we put alpha outside aes() for comparison) scales='free" doesn't work for facet_grid.
+prod_df %>% 
+  filter(Prod_year == 2021, Formtn_name %in% c("MONTNEY","BLUESKY")) %>% 
+  ggplot(aes(x = Water_prod_vol_m3, y = Prod_volume, colour = Prod_type), alpha = 0.3) +
+  geom_point() + 
+  facet_grid(Formtn_name~Prod_type, scales = "free") # scales free => not fixed limits of yaxis
+
 # I expect that Prod_volume = 0 correspond to Saltwater Disposal wells, so let's remove those from the plot.
 prod_df %>% 
-  filter(Prod_year == 2021, Prod_volume > 0) %>% # Prod_colume > 0 to remove disposal wells 
+  filter(Prod_year == 2021, Prod_volume > 0) %>% # Prod_volume > 0 to remove disposal wells 
   ggplot(aes(x = Water_prod_vol_m3, y = Prod_volume, colour = Prod_type, alpha = 0.3)) +
   geom_point() + 
   ggtitle("Water production per HC type") +
