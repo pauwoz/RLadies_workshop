@@ -27,10 +27,8 @@ rm(list = ls(all=TRUE)) # clear global environment
 
 ```{r libraries-loading, message=FALSE, warning=FALSE}
 
-library(tidyr) # data loading
-library(dplyr) # dataframe manipulation
+library(dplyr) # dataframe manipulation (e.g. renaming columns)
 library(stringr) # string manipulation
-library(ggplot2) # plotting
 
 # or simply library(tidyverse)
 
@@ -43,32 +41,29 @@ sprintf("Current directory: %s", getwd())
 
 ```
 
-## Data loading & preparation
+## Part 1 - Data loading & preprocessing
 
 Let's load some data first
 
 ```{r load-data}
 wells <- read.csv(unzip("BCOGC_data/prod_csv.zip", "zone_prd_2016_to_present.csv"), skip = 1)
 
-head(wells)
+head(wells, 3)
 ```
 
 Column names in the original file have inconvenient interpunction, which can be easily fixed:
 ```{r rename-columns}
 names(wells)
 
-names(wells) <- str_replace_all(names(wells), c(" " = "" , 
-                                                "," = "",
-                                                "\\("="_",
-                                                "\\)"="",
-                                                "\\.."="_",
+names(wells) <- str_replace_all(names(wells), c("\\.."="_",
                                                 "\\."=""
                                                 ))
-names(wells)
+head(wells)
 ```
 
 ```{r read-addtional-files}
 wells <- subset(wells, select=c(Wa_num, Prod_period, Prod_days, Area_code, Formtn_code, Gas_prod_vol_e3m3, Oil_prod_vol_m3, Water_prod_vol_m3, Cond_prod_vol_m3)) # select only useful columns
+head(subset(wells, select=c(Area_code, Formtn_code)), 3)
 
 area_codes <- read.table("BCOGC_data/ogc_area_codes.csv", 
                          sep = ",", skip = 1, header = TRUE, stringsAsFactors = FALSE)
@@ -91,10 +86,12 @@ and name as the wells file contains only its numerical codes.
 ```{r merge-area-formation-codes}
 wells <- merge(wells, area_codes, by = 'Area_code')
 wells <- merge(wells, formation_codes, by = 'Formtn_code')
-
 # we don't need them anymore in memory and dataframe
 rm(area_codes, formation_codes) # remove form memory
 wells <- subset(wells, select = -c(Area_code, Formtn_code)) # remove from dataframe
+head(wells, 3)
+dim(wells)
+
 ```
 
 First glimpse on the data. Notice newly created columns, Area_name and Formtn_name at the end.
@@ -109,6 +106,7 @@ length(unique(wells$Formtn_name))
 # ...and list them
 unique(wells$Formtn_name)
 ```
+## Part 2 - further preprocessing using dyplyr
 
 ## Key dplyr functions:
 * filter() - filter specific rows by values
@@ -121,9 +119,12 @@ unique(wells$Formtn_name)
 ### filter - filter rows by values
 
 ```{r dplyr-filter}
+library(tidyr)
+library(ggplot2)
 
-slave_pnt <- filter(wells, Formtn_name == "SLAVE POINT" )
+slave_pnt <- filter(wells, Formtn_name == "SLAVE POINT")
 unique(slave_pnt$Formtn_name)
+head(slave_pnt)
 
 muskwa <- filter(wells, Formtn_name %in% c("MUSKWA", "MUSKWA-OTTER PARK"))
 unique(muskwa$Formtn_name)
@@ -172,6 +173,7 @@ wells <- wells %>%
 head(wells)
 class(wells$Prod_ym)
 
+
 ```
 ### summarize - summary within the group
 
@@ -194,6 +196,8 @@ prod_days_by_area %>% filter(total_prod_days > 500000) %>%
   xlab("Area")
 ```
 
+### Part 3 - Plotting using ggplot2
+
 ## histograms
 Histograms are commonly used to visualize the distribution of our data. The bars of histogram correspond to the number of observations within specific bin. Note: it's recommended to check different bin sizes to find the most optimal bin for the data.
 
@@ -211,7 +215,7 @@ wells %>% filter(Cond_prod_vol_m3 > 100, Cond_prod_vol_m3 < 1000) %>%
 # increase number of bins to 200 to see the difference
 wells %>% filter(Cond_prod_vol_m3 > 100, Cond_prod_vol_m3 < 1000) %>% 
   ggplot() + 
-  geom_histogram(mapping = aes(Cond_prod_vol_m3), bins=200) + 
+  geom_histogram(mapping = aes(Cond_prod_vol_m3), bins=100) + 
   ggtitle("Distribution of condensate production per production period") + 
   xlab(expression("Condensate production per production period m"^3))
 ```
@@ -335,7 +339,7 @@ wells %>% subset(Prod_year > 2018) %>%
 
 ### ...and per year. Which one is more useful / interesting?
 wells %>% 
-  subset(Prod_year > 2018) %>%
+  subset(Prod_year > 2015) %>%
   group_by(Prod_year) %>% 
   summarise(
     prod_per_year = sum(Cond_prod_vol_m3)
@@ -542,7 +546,7 @@ p
 
 ```
 
-## Visualize data on map!
+### Part 4 - Gospatial visualization using sf
 Let's move to another dataset provided by BCOGC to access the location of the wells and plot them together with geophysical lines, O&G pools and fields.
 O&G field => group of O&G pools
 
@@ -563,7 +567,7 @@ rm(list = ls(all=TRUE)) # clear global environment
 
 sprintf("Current directory: %s", getwd())
 
-library(sf) # install.packages(sf) if you don't have it
+library(sf) # install.packages("sf") if you don't have it
 # load dplyr and ggplot2 in case this is the only chunk you want to run
 library(dplyr) 
 library(ggplot2, warn.conflicts = FALSE) 
@@ -658,6 +662,7 @@ ggplot() +
 fields <- st_read("BCOGC_data/shapefiles/FIELDS_PY.shp")
 ggplot() + 
   geom_sf(data = fields)
+
 fields <- st_transform(fields, st_crs(wells_dawson))
 
 # let's focus on the fields in the smaller area (crop the layer)
