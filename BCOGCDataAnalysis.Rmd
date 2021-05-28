@@ -111,7 +111,7 @@ unique(wells$Formtn_name)
 ## Key dplyr functions:
 * filter() - filter specific rows by values
 * arrange() - sort dataframe by column(s)
-* select() - pick specific columns of dataframe
+* select() - select specific columns of dataframe
 * mutate() - create new variables using functions of existing ones
 * summarize() - collapse many values down to a single summary
 * pipelines (%>%) - allow to perform multiple operations at once
@@ -119,7 +119,8 @@ unique(wells$Formtn_name)
 ### filter - filter rows by values
 
 ```{r dplyr-filter}
-library(tidyr)
+detach(tidyr)
+library(dplyr)
 library(ggplot2)
 
 slave_pnt <- filter(wells, Formtn_name == "SLAVE POINT")
@@ -178,7 +179,7 @@ class(wells$Prod_ym)
 ### summarize - summary within the group
 
 ```{r dplyr-summarize, warning=FALSE}
-head(wells$Prod_period)
+head(wells)
 
 prod_days_by_area <- wells %>%
   group_by(Area_name) %>%
