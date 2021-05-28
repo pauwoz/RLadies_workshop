@@ -11,7 +11,7 @@ editor_options:
 
 ```{r setup, echo=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-# knitr::opts_knit$set(root.dir = 'C:/Users/Paulina-laptop/Desktop/R_programming/')
+# knitr::opts_knit$set(root.dir = 'C:/Users/Paulina-laptop/Desktop/R_programming/RLadies_workshop')
 ```
 
 ## R Markdown
@@ -119,9 +119,10 @@ unique(wells$Formtn_name)
 ### filter - filter rows by values
 
 ```{r dplyr-filter}
-detach(tidyr)
 library(dplyr)
 library(ggplot2)
+library(tidyr)
+
 
 slave_pnt <- filter(wells, Formtn_name == "SLAVE POINT")
 unique(slave_pnt$Formtn_name)
